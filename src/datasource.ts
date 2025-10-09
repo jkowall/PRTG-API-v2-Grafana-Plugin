@@ -17,7 +17,8 @@ export class PRTGDataSource extends DataSourceApi<PRTGQuery, PRTGDataSourceOptio
     super(instanceSettings);
 
     const { url, port = 1616, allowInsecure = false } = instanceSettings.jsonData;
-    const { apiKey = '' } = (instanceSettings as any).decryptedSecureJsonData as PRTGSecureJsonData;
+    const secureJsonData = (instanceSettings as any).decryptedSecureJsonData || {};
+    const apiKey = (secureJsonData as PRTGSecureJsonData)?.apiKey || '';
 
     this.apiClient = new PRTGApiClient({
       url: url || '',
@@ -74,15 +75,24 @@ export class PRTGDataSource extends DataSourceApi<PRTGQuery, PRTGDataSourceOptio
 
   async testDatasource() {
     try {
+      // Validate configuration
+      if (!this.apiClient) {
+        return {
+          status: 'error',
+          message: 'API client not initialized. Please check your configuration.',
+        };
+      }
+
       await this.apiClient.testConnection();
       return {
         status: 'success',
         message: 'Successfully connected to PRTG API v2',
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         status: 'error',
-        message: `Failed to connect: ${error}`,
+        message: `Failed to connect to PRTG API: ${errorMessage}`,
       };
     }
   }

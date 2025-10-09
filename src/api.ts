@@ -29,7 +29,15 @@ export class PRTGApiClient {
 
   constructor(options: PRTGApiClientOptions) {
     this.baseUrl = `${options.url}:${options.port}/api/v2`;
-    this.apiKey = options.apiKey;
+    this.apiKey = options.apiKey || '';
+    
+    // Validate required configuration
+    if (!options.url) {
+      console.warn('PRTG API: URL is not configured');
+    }
+    if (!this.apiKey) {
+      console.warn('PRTG API: API Key is not configured');
+    }
     // this.allowInsecure = options.allowInsecure; // TODO: Implement SSL verification
   }
 
@@ -70,6 +78,15 @@ export class PRTGApiClient {
   }
 
   async testConnection(): Promise<void> {
+    // Validate configuration before attempting connection
+    if (!this.apiKey) {
+      throw new Error('API Key is not configured. Please configure the API Key in the datasource settings.');
+    }
+    
+    if (!this.baseUrl || this.baseUrl.includes('undefined')) {
+      throw new Error('Server URL is not configured. Please configure the PRTG server URL in the datasource settings.');
+    }
+
     // Test the connection by making a simple API call
     try {
       const url = this.buildUrl('experimental/objects', { limit: '1' });
@@ -79,7 +96,8 @@ export class PRTGApiClient {
         headers: this.getHeaders(),
       }).toPromise();
     } catch (error) {
-      throw new Error(`Connection test failed: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Connection test failed: ${errorMessage}`);
     }
   }
 
