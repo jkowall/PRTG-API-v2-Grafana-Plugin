@@ -6,6 +6,7 @@ export interface PRTGApiClientOptions {
   port: number;
   apiKey: string;
   allowInsecure: boolean;
+  datasourceId?: number;
 }
 
 export interface PRTGQueryOptions {
@@ -25,17 +26,21 @@ export interface PRTGApiResponse<T = any> {
 export class PRTGApiClient {
   private baseUrl: string;
   private apiKey: string;
+  private datasourceId?: number;
+  private useProxy: boolean;
   // private allowInsecure: boolean; // TODO: Implement SSL verification settings
 
   constructor(options: PRTGApiClientOptions) {
     this.baseUrl = `${options.url}:${options.port}/api/v2`;
     this.apiKey = options.apiKey || '';
+    this.datasourceId = options.datasourceId;
+    this.useProxy = !!this.datasourceId; // Use proxy if datasourceId is available
     
     // Validate required configuration
     if (!options.url) {
       console.warn('PRTG API: URL is not configured');
     }
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.useProxy) {
       console.warn('PRTG API: API Key is not configured');
     }
     // this.allowInsecure = options.allowInsecure; // TODO: Implement SSL verification
@@ -59,10 +64,12 @@ export class PRTGApiClient {
     const url = this.buildUrl(endpoint, params);
     
     try {
+      const headers = this.useProxy ? {} : this.getHeaders();
+      
       const response = await getBackendSrv().fetch<PRTGObject[]>({
         url,
         method: 'GET',
-        headers: this.getHeaders(),
+        headers,
       }).toPromise();
 
       return {
@@ -79,7 +86,7 @@ export class PRTGApiClient {
 
   async testConnection(): Promise<void> {
     // Validate configuration before attempting connection
-    if (!this.apiKey) {
+    if (!this.useProxy && !this.apiKey) {
       throw new Error('API Key is not configured. Please configure the API Key in the datasource settings.');
     }
     
@@ -90,10 +97,12 @@ export class PRTGApiClient {
     // Test the connection by making a simple API call
     try {
       const url = this.buildUrl('experimental/objects', { limit: '1' });
+      const headers = this.useProxy ? {} : this.getHeaders();
+      
       await getBackendSrv().fetch({
         url,
         method: 'GET',
-        headers: this.getHeaders(),
+        headers,
       }).toPromise();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -123,7 +132,17 @@ export class PRTGApiClient {
   }
 
   private buildUrl(endpoint: string, params: Record<string, string> = {}): string {
-    const url = new URL(`${this.baseUrl}/${endpoint}`);
+    let baseUrl: string;
+    
+    if (this.useProxy && this.datasourceId) {
+      // Use Grafana's datasource proxy to handle authentication securely
+      baseUrl = `/api/datasources/proxy/${this.datasourceId}/prtg/api/v2/${endpoint}`;
+    } else {
+      // Direct connection (for backwards compatibility or testing)
+      baseUrl = `${this.baseUrl}/${endpoint}`;
+    }
+    
+    const url = new URL(baseUrl, window.location.origin);
     
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {

@@ -20,11 +20,24 @@ export class PRTGDataSource extends DataSourceApi<PRTGQuery, PRTGDataSourceOptio
     const secureJsonData = (instanceSettings as any).decryptedSecureJsonData || {};
     const apiKey = (secureJsonData as PRTGSecureJsonData)?.apiKey || '';
 
+    // Debug logging to help troubleshoot configuration issues
+    console.log('PRTG Datasource initialization:', {
+      url,
+      port,
+      allowInsecure,
+      hasSecureData: !!(instanceSettings as any).decryptedSecureJsonData,
+      hasApiKey: !!apiKey,
+      apiKeyLength: apiKey?.length || 0,
+      datasourceId: instanceSettings.id,
+      useProxy: !!instanceSettings.id,
+    });
+
     this.apiClient = new PRTGApiClient({
       url: url || '',
       port,
       apiKey,
       allowInsecure,
+      datasourceId: instanceSettings.id,
     });
   }
 

@@ -2,14 +2,18 @@
 
 A native Grafana datasource plugin for PRTG Network Monitor API v2, providing seamless integration between PRTG and Grafana for monitoring and visualization.
 
+> **🔧 Important:** If you're experiencing "API Key is not configured" errors, see [API-KEY-FIX.md](API-KEY-FIX.md) for the solution.
+
 ## Attribution
 
 This plugin is derived from the original dashboard concept created by [stylersnico](https://github.com/stylersnico/PRTG-API-v2-Grafana-Dashboard/) and has been converted into a native Grafana datasource plugin for better integration and functionality.
 
+**Development:** This plugin was developed with the assistance of [GitHub Copilot](https://github.com/features/copilot), an AI pair programmer.
+
 ## Features
 
 - **Native Integration**: Direct connection to PRTG API v2 without external dependencies
-- **Secure Authentication**: Bearer token authentication with encrypted API key storage
+- **Secure Authentication**: Bearer token authentication with encrypted API key storage via Grafana's proxy
 - **Flexible Querying**: Support for filters, limits, and custom column selection
 - **Real-time Data**: Live data from PRTG sensors, devices, groups, and probes
 - **Pre-built Filters**: Quick access to common status filters (Down, Warning, Paused, Up)
@@ -29,9 +33,29 @@ This plugin is derived from the original dashboard concept created by [stylersni
 grafana-cli plugins install prtgapiv2-datasource
 ```
 
+### Quick Installation with Scripts
+
+**Linux/macOS:**
+```bash
+npm run build
+./install-plugin.sh
+sudo systemctl restart grafana-server
+```
+
+**Windows (PowerShell as Administrator):**
+```powershell
+npm run build
+.\install-plugin.ps1
+Restart-Service -Name Grafana
+```
+
+See [WINDOWS-INSTALL.md](WINDOWS-INSTALL.md) for detailed Windows installation guide.
+
 ### Manual Installation
 1. Download the latest release from [GitHub Releases](https://github.com/jkowall/PRTG-API-v2-Grafana-Plugin/releases)
-2. Extract to your Grafana plugins directory: `/var/lib/grafana/plugins/`
+2. Extract to your Grafana plugins directory:
+   - **Linux/macOS:** `/var/lib/grafana/plugins/`
+   - **Windows:** `C:\Program Files\GrafanaLabs\grafana\data\plugins\`
 3. Restart Grafana
 4. Enable the plugin in Grafana Admin > Plugins
 
@@ -47,7 +71,7 @@ npm install
 # Build the plugin
 npm run build
 
-# Link to Grafana plugins directory
+# Link to Grafana plugins directory (Linux/macOS)
 ln -s $(pwd)/dist /var/lib/grafana/plugins/prtgapiv2-datasource
 
 # Restart Grafana
@@ -287,6 +311,24 @@ npm run lint
 ## License
 
 This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
+
+## Troubleshooting
+
+### "API Key is not configured" Error
+See [API-KEY-FIX.md](API-KEY-FIX.md) for the complete solution. Quick fix:
+1. Rebuild: `npm run build`
+2. Install: `./install-plugin.sh`
+3. Restart Grafana
+4. Reset and re-enter API Key in datasource settings
+
+### Connection Issues
+- Verify PRTG server is accessible from Grafana server
+- Check firewall rules on port 1616
+- Ensure API v2 is enabled on PRTG
+- Test with curl: `curl https://your-prtg:1616/api/v2/experimental/objects?limit=1 -H "Authorization: Bearer YOUR_KEY"`
+
+### Configuration Help
+See [CONFIGURATION.md](CONFIGURATION.md) for detailed setup instructions.
 
 ## Support
 
