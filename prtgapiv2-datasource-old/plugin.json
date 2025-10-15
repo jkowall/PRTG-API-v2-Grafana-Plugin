@@ -5,7 +5,8 @@
   "id": "prtgapiv2-datasource",
   "metrics": true,
   "annotations": false,
-  "alerting": false,
+  "alerting": true,
+  "executable": "gpx_prtg-api-v2-datasource",
   "info": {
     "description": "Grafana datasource plugin for PRTG Network Monitor API v2. Derived from the original dashboard concept at https://github.com/stylersnico/PRTG-API-v2-Grafana-Dashboard/ and converted to a plugin.",
     "author": {
@@ -38,26 +39,5 @@
   "dependencies": {
     "grafanaDependency": ">=9.0.0",
     "plugins": []
-  },
-  "routes": [
-  {
-    "path": "prtg",
-    "method": "*",
-    "url": "{{ .JsonData.url }}/api/v2",
-    "headers": [
-      {
-        "name": "Authorization",
-        "content": "Bearer {{ .SecureJsonData.apiKey }}"
-      },
-      {
-        "name": "Content-Type",
-        "content": "application/json"
-      },
-      {
-        "name": "Accept",
-        "content": "application/json"
-      }
-    ]
   }
-]
 }
