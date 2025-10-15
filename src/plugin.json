@@ -43,11 +43,19 @@
     {
       "path": "prtg",
       "method": "*",
-      "url": "{{ .JsonData.url }}:{{ .JsonData.port }}",
+      "url": "{{ .JsonData.url }}:{{ .JsonData.port }}/api/v2",
       "headers": [
         {
           "name": "Authorization",
           "content": "Bearer {{ .SecureJsonData.apiKey }}"
+        },
+        {
+          "name": "Content-Type",
+          "content": "application/json"
+        },
+        {
+          "name": "Accept",
+          "content": "application/json"
         }
       ]
     }

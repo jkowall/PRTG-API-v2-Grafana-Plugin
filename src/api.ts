@@ -43,6 +43,14 @@ export class PRTGApiClient {
     if (!this.apiKey && !this.useProxy) {
       console.warn('PRTG API: API Key is not configured');
     }
+    
+    // Log proxy configuration for debugging
+    console.log('PRTG API Client initialized:', {
+      useProxy: this.useProxy,
+      datasourceId: this.datasourceId,
+      hasApiKey: !!this.apiKey,
+      baseUrl: this.useProxy ? 'Using proxy route' : this.baseUrl,
+    });
     // this.allowInsecure = options.allowInsecure; // TODO: Implement SSL verification
   }
 
@@ -62,6 +70,13 @@ export class PRTGApiClient {
     }
 
     const url = this.buildUrl(endpoint, params);
+    
+    console.log('PRTG API query:', {
+      endpoint,
+      url,
+      useProxy: this.useProxy,
+      hasApiKey: !!this.apiKey,
+    });
     
     try {
       const headers = this.useProxy ? {} : this.getHeaders();
@@ -136,7 +151,8 @@ export class PRTGApiClient {
     
     if (this.useProxy && this.datasourceId) {
       // Use Grafana's datasource proxy to handle authentication securely
-      baseUrl = `/api/datasources/proxy/${this.datasourceId}/prtg/api/v2/${endpoint}`;
+      // The proxy route already includes /api/v2 in plugin.json
+      baseUrl = `/api/datasources/proxy/${this.datasourceId}/prtg/${endpoint}`;
     } else {
       // Direct connection (for backwards compatibility or testing)
       baseUrl = `${this.baseUrl}/${endpoint}`;
