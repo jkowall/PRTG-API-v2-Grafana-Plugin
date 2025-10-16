@@ -10,23 +10,56 @@ interface Props extends DataSourcePluginOptionsEditorProps<PRTGDataSourceOptions
 interface State {}
 
 export class ConfigEditor extends PureComponent<Props, State> {
-  onURLChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { onOptionsChange, options } = this.props;
-    const jsonData = {
-      ...options.jsonData,
-      url: event.target.value,
-    };
-    onOptionsChange({ ...options, jsonData });
+onURLChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const { onOptionsChange, options } = this.props;
+  let url = event.target.value;
+  
+  // Ensure protocol
+  if (url && !url.match(/^https?:\/\//)) {
+    url = `https://${url}`;
+  }
+  
+  // If port exists in jsonData, append it
+  const port = options.jsonData.port || 1616;
+  if (url && !url.match(/:\d+$/)) {
+    url = `${url}:${port}`;
+  }
+  
+  const jsonData = {
+    ...options.jsonData,
+    url: url,
   };
+  
+  onOptionsChange({ ...options, jsonData });
+};
 
   onPortChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { onOptionsChange, options } = this.props;
-    const jsonData = {
-      ...options.jsonData,
-      port: parseInt(event.target.value, 10) || 1616,
-    };
-    onOptionsChange({ ...options, jsonData });
+  const { onOptionsChange, options } = this.props;
+  const port = parseInt(event.target.value, 10) || 1616;
+  
+  // Get base URL without port
+  let baseUrl = options.jsonData.url || '';
+  
+  // Remove any existing port
+  baseUrl = baseUrl.replace(/:\d+$/, '');
+  
+  // Ensure protocol exists
+  if (!baseUrl.match(/^https?:\/\//)) {
+    baseUrl = `https://${baseUrl}`;
+  }
+  
+  // Construct full URL with port
+  const fullUrl = `${baseUrl}:${port}`;
+  
+  const jsonData = {
+    ...options.jsonData,
+    url: fullUrl,
+    port: port,
   };
+  
+  onOptionsChange({ ...options, jsonData });
+};
+
 
   onAllowInsecureChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onOptionsChange, options } = this.props;
