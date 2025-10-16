@@ -2,8 +2,6 @@
 
 A native Grafana datasource plugin for PRTG Network Monitor API v2, providing seamless integration between PRTG and Grafana for monitoring and visualization.
 
-> **🔧 Important:** If you're experiencing "API Key is not configured" errors, see [API-KEY-FIX.md](API-KEY-FIX.md) for the solution.
-
 ## Attribution
 
 This plugin is derived from the original dashboard concept created by [stylersnico](https://github.com/stylersnico/PRTG-API-v2-Grafana-Dashboard/) and has been converted into a native Grafana datasource plugin for better integration and functionality.
