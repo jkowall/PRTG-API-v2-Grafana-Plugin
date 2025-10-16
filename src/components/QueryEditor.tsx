@@ -22,6 +22,7 @@ const PREDEFINED_FILTERS: Array<SelectableValue<string>> = [
   { label: 'Warning Status', value: 'status = warning' },
   { label: 'Paused Status', value: 'status = paused' },
   { label: 'Up Status', value: 'status = up' },
+  { label: 'Down or Warning', value: 'status = down OR status = warning' },
   { label: 'Custom Filter', value: 'custom' },
 ];
 
@@ -46,17 +47,24 @@ export class QueryEditor extends PureComponent<Props> {
   };
 
   onFilterChange = (value: SelectableValue<string>) => {
-    const { onChange, query } = this.props;
+    const { onChange, query, onRunQuery } = this.props;
     if (value.value === 'custom') {
-      onChange({ ...query, filter: '' });
+      // Keep existing custom filter or clear it
+      onChange({ ...query, filter: query.filter || '' });
     } else {
       onChange({ ...query, filter: value.value });
+      onRunQuery(); // Auto-run query when predefined filter selected
     }
   };
 
   onCustomFilterChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onChange, query } = this.props;
     onChange({ ...query, filter: event.target.value });
+  };
+
+  onCustomFilterBlur = () => {
+    const { onRunQuery } = this.props;
+    onRunQuery(); // Run query when user finishes editing custom filter
   };
 
   onLimitChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -74,20 +82,37 @@ export class QueryEditor extends PureComponent<Props> {
   onColumnsChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onChange, query } = this.props;
     const columnsString = event.target.value;
+    
+    // Don't split while user is typing - just store the raw string
+    onChange({ ...query, columnsString });
+  };
+
+  onColumnsBlur = () => {
+    const { onChange, query, onRunQuery } = this.props;
+    const columnsString = (query as any).columnsString || '';
+    
+    // Only parse when user finishes editing
     const columns = columnsString
       .split(',')
-      .map(col => col.trim())
-      .filter(col => col.length > 0);
-    onChange({ ...query, columns: columns.length > 0 ? columns : undefined });
+      .map((col: string) => col.trim())
+      .filter((col: string) => col.length > 0);
+    
+    onChange({ ...query, columns: columns.length > 0 ? columns : undefined, columnsString: undefined });
+    onRunQuery();
   };
 
   render() {
     const query = { ...this.props.query };
     const { endpoint, filter, limit, offset, columns } = query;
+    
+    // Use raw string while editing, otherwise show formatted columns
+    const columnsValue = (query as any).columnsString !== undefined 
+      ? (query as any).columnsString 
+      : columns?.join(', ') || '';
 
     const selectedEndpoint = ENDPOINT_OPTIONS.find(option => option.value === endpoint) || ENDPOINT_OPTIONS[0];
     
-    const isCustomFilter = filter && !PREDEFINED_FILTERS.find(option => option.value === filter);
+    const isCustomFilter = filter && !PREDEFINED_FILTERS.find(option => option.value === filter && option.value !== 'custom');
     const selectedFilter = isCustomFilter 
       ? PREDEFINED_FILTERS.find(option => option.value === 'custom')
       : PREDEFINED_FILTERS.find(option => option.value === filter) || PREDEFINED_FILTERS[0];
@@ -123,9 +148,10 @@ export class QueryEditor extends PureComponent<Props> {
               labelWidth={12}
               inputWidth={30}
               onChange={this.onCustomFilterChange}
+              onBlur={this.onCustomFilterBlur}
               value={filter || ''}
               placeholder="e.g., status = down AND name contains 'server'"
-              tooltip="Use PRTG API v2 filter syntax"
+              tooltip="Use PRTG API v2 filter syntax. Supports AND, OR operators"
             />
           </div>
         )}
@@ -162,9 +188,10 @@ export class QueryEditor extends PureComponent<Props> {
             labelWidth={12}
             inputWidth={30}
             onChange={this.onColumnsChange}
-            value={columns?.join(', ') || ''}
+            onBlur={this.onColumnsBlur}
+            value={columnsValue}
             placeholder="name, status, message, parent.name"
-            tooltip={`Comma-separated list of columns to display. Common columns: ${COMMON_COLUMNS.join(', ')}`}
+            tooltip={`Comma-separated list of columns to display. You can type commas normally. Common columns: ${COMMON_COLUMNS.join(', ')}`}
           />
         </div>
 
@@ -173,8 +200,12 @@ export class QueryEditor extends PureComponent<Props> {
             <div className="gf-form-label width-12">Help</div>
             <div className="gf-form-label">
               <small>
-                Use the PRTG API v2 syntax for filters. 
+                <strong>Filter Syntax:</strong> Use PRTG API v2 syntax. 
                 Examples: &quot;status = down&quot;, &quot;name contains &apos;server&apos;&quot;, &quot;status = warning AND device = &apos;router&apos;&quot;
+                <br />
+                <strong>Operators:</strong> AND, OR for combining filters. Use = for equals, contains for partial match.
+                <br />
+                <strong>Endpoints:</strong> Use specific endpoints (sensors, devices, groups, probes) for better filtering support.
               </small>
             </div>
           </div>

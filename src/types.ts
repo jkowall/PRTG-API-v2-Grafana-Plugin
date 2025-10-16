@@ -6,6 +6,7 @@ export interface PRTGQuery extends DataQuery {
   limit?: number;
   offset?: number;
   columns?: string[];
+  columnsString?: string; // Temporary field for editing columns
   format?: 'table' | 'timeseries';
 }
 
