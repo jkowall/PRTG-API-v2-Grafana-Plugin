@@ -1,5 +1,5 @@
 import React, { ChangeEvent, PureComponent } from 'react';
-import { LegacyForms, InlineField, Select } from '@grafana/ui';
+import { LegacyForms, InlineField, MultiSelect, Input } from '@grafana/ui';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { PRTGDataSource } from '../datasource';
 import { PRTGDataSourceOptions, PRTGQuery } from '../types';
@@ -8,22 +8,19 @@ const { FormField } = LegacyForms;
 
 type Props = QueryEditorProps<PRTGDataSource, PRTGQuery, PRTGDataSourceOptions>;
 
-const ENDPOINT_OPTIONS: Array<SelectableValue<string>> = [
-  { label: 'Objects (Experimental)', value: 'experimental/objects' },
-  { label: 'Sensors', value: 'sensors' },
-  { label: 'Devices', value: 'devices' },
-  { label: 'Groups', value: 'groups' },
-  { label: 'Probes', value: 'probes' },
+const OBJECT_TYPE_OPTIONS: Array<SelectableValue<string>> = [
+  { label: 'Channels', value: 'channel' },
+  { label: 'Sensors', value: 'sensor' },
+  { label: 'Devices', value: 'device' },
+  { label: 'Groups', value: 'group' },
+  { label: 'Probes', value: 'probe' },
 ];
 
-const PREDEFINED_FILTERS: Array<SelectableValue<string>> = [
-  { label: 'All Objects', value: '' },
-  { label: 'Down Status', value: 'status = down' },
-  { label: 'Warning Status', value: 'status = warning' },
-  { label: 'Paused Status', value: 'status = paused' },
-  { label: 'Up Status', value: 'status = up' },
-  { label: 'Down or Warning', value: 'status = down OR status = warning' },
-  { label: 'Custom Filter', value: 'custom' },
+const STATUS_OPTIONS: Array<SelectableValue<string>> = [
+  { label: 'Up', value: 'up' },
+  { label: 'Down', value: 'down' },
+  { label: 'Warning', value: 'warning' },
+  { label: 'Paused', value: 'paused' },
 ];
 
 const COMMON_COLUMNS = [
@@ -41,30 +38,28 @@ const COMMON_COLUMNS = [
 ];
 
 export class QueryEditor extends PureComponent<Props> {
-  onEndpointChange = (value: SelectableValue<string>) => {
-    const { onChange, query } = this.props;
-    onChange({ ...query, endpoint: value.value });
-  };
-
-  onFilterChange = (value: SelectableValue<string>) => {
+  onObjectTypesChange = (values: Array<SelectableValue<string>>) => {
     const { onChange, query, onRunQuery } = this.props;
-    if (value.value === 'custom') {
-      // Keep existing custom filter or clear it
-      onChange({ ...query, filter: query.filter || '' });
-    } else {
-      onChange({ ...query, filter: value.value });
-      onRunQuery(); // Auto-run query when predefined filter selected
-    }
+    const objectTypes = values.map(v => v.value).filter((v): v is string => v !== undefined);
+    onChange({ ...query, objectTypes: objectTypes.length > 0 ? objectTypes : undefined });
+    onRunQuery(); // Auto-run query when object types change
   };
 
-  onCustomFilterChange = (event: ChangeEvent<HTMLInputElement>) => {
+  onStatusesChange = (values: Array<SelectableValue<string>>) => {
+    const { onChange, query, onRunQuery } = this.props;
+    const statuses = values.map(v => v.value).filter((v): v is string => v !== undefined);
+    onChange({ ...query, statuses: statuses.length > 0 ? statuses : undefined });
+    onRunQuery(); // Auto-run query when statuses change
+  };
+
+  onFilterChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onChange, query } = this.props;
     onChange({ ...query, filter: event.target.value });
   };
 
-  onCustomFilterBlur = () => {
+  onFilterBlur = () => {
     const { onRunQuery } = this.props;
-    onRunQuery(); // Run query when user finishes editing custom filter
+    onRunQuery(); // Run query when user finishes editing filter
   };
 
   onLimitChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -83,83 +78,107 @@ export class QueryEditor extends PureComponent<Props> {
     const { onChange, query } = this.props;
     const columnsString = event.target.value;
     
-    // Don't split while user is typing - just store the raw string
-    onChange({ ...query, columnsString });
-  };
-
-  onColumnsBlur = () => {
-    const { onChange, query, onRunQuery } = this.props;
-    const columnsString = (query as any).columnsString || '';
-    
-    // Only parse when user finishes editing
+    // Parse columns immediately while typing
     const columns = columnsString
       .split(',')
       .map((col: string) => col.trim())
       .filter((col: string) => col.length > 0);
     
-    onChange({ ...query, columns: columns.length > 0 ? columns : undefined, columnsString: undefined });
-    onRunQuery();
+    onChange({ ...query, columns: columns.length > 0 ? columns : undefined });
+  };
+
+  onColumnsBlur = () => {
+    const { onRunQuery } = this.props;
+    onRunQuery(); // Run query when user finishes editing columns
   };
 
   render() {
     const query = { ...this.props.query };
-    const { endpoint, filter, limit, offset, columns } = query;
+    const { objectTypes, statuses, filter, limit, offset, columns } = query;
     
-    // Use raw string while editing, otherwise show formatted columns
-    const columnsValue = (query as any).columnsString !== undefined 
-      ? (query as any).columnsString 
-      : columns?.join(', ') || '';
-
-    const selectedEndpoint = ENDPOINT_OPTIONS.find(option => option.value === endpoint) || ENDPOINT_OPTIONS[0];
+    // Convert arrays to SelectableValue arrays for MultiSelect
+    const selectedObjectTypes = (objectTypes || [])
+      .map(type => OBJECT_TYPE_OPTIONS.find(opt => opt.value === type))
+      .filter((opt): opt is SelectableValue<string> => opt !== undefined);
     
-    const isCustomFilter = filter && !PREDEFINED_FILTERS.find(option => option.value === filter && option.value !== 'custom');
-    const selectedFilter = isCustomFilter 
-      ? PREDEFINED_FILTERS.find(option => option.value === 'custom')
-      : PREDEFINED_FILTERS.find(option => option.value === filter) || PREDEFINED_FILTERS[0];
+    const selectedStatuses = (statuses || [])
+      .map(status => STATUS_OPTIONS.find(opt => opt.value === status))
+      .filter((opt): opt is SelectableValue<string> => opt !== undefined);
+    
+    const columnsValue = columns?.join(', ') || '';
 
     return (
       <div className="gf-form-group">
         <div className="gf-form">
-          <InlineField label="Endpoint" labelWidth={12}>
-            <Select
-              options={ENDPOINT_OPTIONS}
-              value={selectedEndpoint}
-              onChange={this.onEndpointChange}
-              width={30}
+          <InlineField 
+            label="Object Type" 
+            labelWidth={16}
+            tooltip="Select one or more object types. Generates filter like: type = sensor OR type = device"
+            grow
+          >
+            <MultiSelect
+              options={OBJECT_TYPE_OPTIONS}
+              value={selectedObjectTypes}
+              onChange={this.onObjectTypesChange}
+              placeholder="Select object types..."
+              isClearable
             />
           </InlineField>
         </div>
 
         <div className="gf-form">
-          <InlineField label="Filter" labelWidth={12}>
-            <Select
-              options={PREDEFINED_FILTERS}
-              value={selectedFilter}
-              onChange={this.onFilterChange}
-              width={30}
+          <InlineField 
+            label="Status" 
+            labelWidth={16}
+            tooltip="Select one or more status values. Generates filter like: status = down OR status = warning"
+            grow
+          >
+            <MultiSelect
+              options={STATUS_OPTIONS}
+              value={selectedStatuses}
+              onChange={this.onStatusesChange}
+              placeholder="Select statuses..."
+              isClearable
             />
           </InlineField>
         </div>
 
-        {(isCustomFilter || selectedFilter?.value === 'custom') && (
-          <div className="gf-form">
-            <FormField
-              label="Custom Filter"
-              labelWidth={12}
-              inputWidth={30}
-              onChange={this.onCustomFilterChange}
-              onBlur={this.onCustomFilterBlur}
+        <div className="gf-form">
+          <InlineField 
+            label="Custom Filter" 
+            labelWidth={16}
+            tooltip="Additional filters using PRTG API v2 syntax. Appended to Object Type and Status filters. Examples: name contains 'server', lastup > '2024-01-01'"
+            grow
+          >
+            <Input
+              onChange={this.onFilterChange}
+              onBlur={this.onFilterBlur}
               value={filter || ''}
-              placeholder="e.g., status = down AND name contains 'server'"
-              tooltip="Use PRTG API v2 filter syntax. Supports AND, OR operators"
+              placeholder="e.g., name contains 'server' AND lastup > '2024-01-01'"
             />
-          </div>
-        )}
+          </InlineField>
+        </div>
+
+        <div className="gf-form">
+          <InlineField 
+            label="Columns" 
+            labelWidth={16}
+            tooltip="Comma-separated columns to display"
+            grow
+          >
+            <Input
+              onChange={this.onColumnsChange}
+              onBlur={this.onColumnsBlur}
+              value={columnsValue}
+              placeholder="name, status, message, parent.name"
+            />
+          </InlineField>
+        </div>
 
         <div className="gf-form">
           <FormField
             label="Limit"
-            labelWidth={12}
+            labelWidth={16}
             inputWidth={15}
             onChange={this.onLimitChange}
             value={limit?.toString() || ''}
@@ -172,7 +191,7 @@ export class QueryEditor extends PureComponent<Props> {
         <div className="gf-form">
           <FormField
             label="Offset"
-            labelWidth={12}
+            labelWidth={16}
             inputWidth={15}
             onChange={this.onOffsetChange}
             value={offset?.toString() || ''}
@@ -182,30 +201,19 @@ export class QueryEditor extends PureComponent<Props> {
           />
         </div>
 
-        <div className="gf-form">
-          <FormField
-            label="Columns"
-            labelWidth={12}
-            inputWidth={30}
-            onChange={this.onColumnsChange}
-            onBlur={this.onColumnsBlur}
-            value={columnsValue}
-            placeholder="name, status, message, parent.name"
-            tooltip={`Comma-separated list of columns to display. You can type commas normally. Common columns: ${COMMON_COLUMNS.join(', ')}`}
-          />
-        </div>
-
         <div className="gf-form-group">
           <div className="gf-form">
-            <div className="gf-form-label width-12">Help</div>
+            <div className="gf-form-label width-16">Help</div>
             <div className="gf-form-label">
               <small>
-                <strong>Filter Syntax:</strong> Use PRTG API v2 syntax. 
-                Examples: &quot;status = down&quot;, &quot;name contains &apos;server&apos;&quot;, &quot;status = warning AND device = &apos;router&apos;&quot;
+                <strong>Filter Syntax:</strong> Use PRTG API v2 filter query language (
+                <a href="https://www.paessler.com/support/prtg/api/v2/overview/index.html#filter" target="_blank" rel="noopener noreferrer">
+                  Documentation
+                </a>).
                 <br />
-                <strong>Operators:</strong> AND, OR for combining filters. Use = for equals, contains for partial match.
+                <strong>Operators:</strong> AND, OR for combining filters. Use = for equals, contains for partial match, &gt; &lt; for comparisons.
                 <br />
-                <strong>Endpoints:</strong> Use specific endpoints (sensors, devices, groups, probes) for better filtering support.
+                <strong>Common columns:</strong> {COMMON_COLUMNS.join(', ')}
               </small>
             </div>
           </div>

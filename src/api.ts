@@ -125,27 +125,6 @@ export class PRTGApiClient {
     }
   }
 
-  async getObjects(filter?: string, limit?: number, offset?: number): Promise<PRTGApiResponse<PRTGObject>> {
-    return this.query({
-      endpoint: 'experimental/objects',
-      filter,
-      limit,
-      offset,
-    });
-  }
-
-  async getObjectsDown(limit?: number): Promise<PRTGApiResponse<PRTGObject>> {
-    return this.getObjects('status = down', limit);
-  }
-
-  async getObjectsWarning(limit?: number): Promise<PRTGApiResponse<PRTGObject>> {
-    return this.getObjects('status = warning', limit);
-  }
-
-  async getObjectsPaused(limit?: number): Promise<PRTGApiResponse<PRTGObject>> {
-    return this.getObjects('status = paused', limit);
-  }
-
   private buildUrl(endpoint: string, params: Record<string, string> = {}): string {
     let baseUrl: string;
     

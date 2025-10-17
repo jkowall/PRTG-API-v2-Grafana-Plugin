@@ -46,14 +46,17 @@ export class PRTGDataSource extends DataSourceApi<PRTGQuery, PRTGDataSourceOptio
     const data: MutableDataFrame[] = [];
 
     for (const target of options.targets) {
-      if (target.hide || !target.endpoint) {
+      if (target.hide) {
         continue;
       }
 
       try {
+        // Build filter from objectTypes, statuses, and custom filter
+        const filter = this.buildFilter(target);
+
         const response = await this.apiClient.query({
-          endpoint: target.endpoint,
-          filter: target.filter,
+          endpoint: 'experimental/objects',
+          filter,
           limit: target.limit,
           offset: target.offset,
         });
@@ -84,6 +87,37 @@ export class PRTGDataSource extends DataSourceApi<PRTGQuery, PRTGDataSourceOptio
     }
 
     return { data };
+  }
+
+  private buildFilter(query: PRTGQuery): string {
+    const filters: string[] = [];
+
+    // Build filter from objectTypes
+    if (query.objectTypes && query.objectTypes.length > 0) {
+      const typeFilters = query.objectTypes.map(type => `type = ${type}`);
+      if (typeFilters.length === 1) {
+        filters.push(typeFilters[0]);
+      } else {
+        filters.push(`(${typeFilters.join(' OR ')})`);
+      }
+    }
+
+    // Build filter from statuses
+    if (query.statuses && query.statuses.length > 0) {
+      const statusFilters = query.statuses.map(status => `status = ${status}`);
+      if (statusFilters.length === 1) {
+        filters.push(statusFilters[0]);
+      } else {
+        filters.push(`(${statusFilters.join(' OR ')})`);
+      }
+    }
+
+    // Add custom filter
+    if (query.filter && query.filter.trim()) {
+      filters.push(`(${query.filter.trim()})`);
+    }
+
+    return filters.join(' AND ');
   }
 
   async testDatasource() {

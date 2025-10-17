@@ -1,12 +1,12 @@
 import { DataQuery, DataSourceJsonData } from '@grafana/data';
 
 export interface PRTGQuery extends DataQuery {
-  endpoint?: string;
-  filter?: string;
+  objectTypes?: string[]; // Multi-select: channel, sensor, device, group, probe
+  statuses?: string[]; // Multi-select: up, down, warning, paused
+  filter?: string; // Custom filter using PRTG API v2 filter syntax
   limit?: number;
   offset?: number;
   columns?: string[];
-  columnsString?: string; // Temporary field for editing columns
   format?: 'table' | 'timeseries';
 }
 
