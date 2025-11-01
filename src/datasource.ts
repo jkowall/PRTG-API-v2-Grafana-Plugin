@@ -171,8 +171,19 @@ export class PRTGDataSource extends DataSourceApi<PRTGQuery, PRTGDataSourceOptio
     if (typeof value === 'boolean') {
       return FieldType.boolean;
     }
-    if (value instanceof Date || (typeof value === 'string' && !isNaN(Date.parse(value)))) {
+    // Only treat as date if it's an actual Date object or a string that looks like a proper date/time
+    // Avoid parsing simple numbers like "1002" as dates
+    if (value instanceof Date) {
       return FieldType.time;
+    }
+    if (typeof value === 'string') {
+      // Only treat as date if it contains date separators or time indicators
+      // This prevents IDs like "1002" from being parsed as dates
+      const hasDateSeparators = /[-\/:]/.test(value);
+      const hasTimeIndicators = /T|Z|\s\d{2}:/.test(value);
+      if ((hasDateSeparators || hasTimeIndicators) && !isNaN(Date.parse(value))) {
+        return FieldType.time;
+      }
     }
     return FieldType.string;
   }

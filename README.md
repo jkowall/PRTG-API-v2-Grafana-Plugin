@@ -12,10 +12,13 @@ This plugin is derived from the original dashboard concept created by [stylersni
 
 - **Native Integration**: Direct connection to PRTG API v2 without external dependencies
 - **Secure Authentication**: Bearer token authentication with encrypted API key storage via Grafana's proxy
-- **Flexible Querying**: Support for filters, limits, and custom column selection
-- **Real-time Data**: Live data from PRTG sensors, devices, groups, and probes
-- **Pre-built Filters**: Quick access to common status filters (Down, Warning, Paused, Up)
-- **Custom Columns**: Select specific fields for optimized dashboards
+- **Smart Defaults**: New queries start with sensible defaults (100 result limit, essential columns)
+- **Column Presets**: Quick-select common column configurations (Essential, Network Device, Full Details, Troubleshooting)
+- **Column Auto-complete**: Searchable dropdown with all available PRTG fields, plus support for custom column names
+- **Query Naming**: Add friendly names to queries for better dashboard organization
+- **Flexible Filtering**: Multi-select for object types and statuses, plus custom filter syntax support
+- **Real-time Data**: Live data from PRTG objects (sensors, devices, groups, probes, channels)
+- **Optimized Queries**: Select specific columns and apply filters for efficient data retrieval
 
 ## Prerequisites
 
@@ -109,51 +112,104 @@ Create an API key in PRTG:
 
 ### Creating Queries
 
-1. **Endpoint Selection**: Choose the PRTG API endpoint:
-   - `Objects (Experimental)` - All PRTG objects
-   - `Sensors` - Sensor data
-   - `Devices` - Device information
-   - `Groups` - Group data
-   - `Probes` - Probe information
+The query editor provides an intuitive interface with smart defaults and helpful presets:
 
-2. **Filtering**: Apply filters to narrow down results:
-   - **Predefined Filters**: Quick access to common statuses
-     - All Objects
-     - Down Status
-     - Warning Status  
-     - Paused Status
-     - Up Status
-   - **Custom Filters**: Use PRTG API v2 filter syntax
-     - `status = down`
-     - `name contains 'server'`
-     - `status = warning AND device = 'router'`
+#### 1. **Query Name** (Optional)
+Give your query a friendly name to help organize complex dashboards:
+- Example: "Critical Sensors", "Network Overview", "Down Devices"
 
-3. **Data Limits**: Control result size:
-   - **Limit**: Maximum number of results (0 = no limit)
-   - **Offset**: Number of results to skip (for pagination)
+#### 2. **Object Type** (Multi-select)
+Choose one or more PRTG object types:
+- **Channels** - Individual sensor channels
+- **Sensors** - Monitoring sensors  
+- **Devices** - Monitored devices
+- **Groups** - Device groups
+- **Probes** - PRTG probes
 
-4. **Column Selection**: Choose which fields to display:
-   - Leave empty for all available columns
-   - Specify comma-separated list: `name, status, message, parent.name`
+Selecting multiple types generates an OR filter: `type = sensor OR type = device`
 
-### Common Query Examples
+#### 3. **Status** (Multi-select)
+Filter by object status:
+- **Up** - Normal operation
+- **Down** - Failed/unreachable
+- **Warning** - Warning state
+- **Paused** - Manually paused
 
-#### Show All Down Objects
-- **Endpoint**: `Objects (Experimental)`
-- **Filter**: `Down Status`
-- **Columns**: `name, status, message, parent.name, lastup`
+Selecting multiple statuses generates an OR filter: `status = down OR status = warning`
 
-#### Monitor Specific Device Type
-- **Endpoint**: `Objects (Experimental)`
-- **Filter**: `Custom Filter`
-- **Custom Filter**: `kind_name = 'Ping Sensor' AND status != up`
-- **Columns**: `name, status, device, lastcheck`
+#### 4. **Custom Filter**
+Add additional filters using PRTG API v2 filter syntax:
+- `name contains 'server'`
+- `lastup > '2024-01-01'`
+- `device = 'router' AND status != 'up'`
 
-#### Recent Alerts
-- **Endpoint**: `Objects (Experimental)`
-- **Filter**: `Custom Filter`
-- **Custom Filter**: `status in ('down', 'warning') AND lastdown > '2024-01-01'`
-- **Limit**: `50`
+Custom filters are combined with Object Type and Status using AND logic.
+
+#### 5. **Column Presets**
+Quick-select common column configurations:
+
+- **Essential** (default): `name, status, message`
+  - Perfect for quick overview and status monitoring
+  
+- **Network Device**: `name, status, device, host, lastcheck, message`
+  - Ideal for network infrastructure monitoring
+  
+- **Full Details**: `name, status, message, parent.name, device, group, probe, lastup, lastdown, objid`
+  - Comprehensive view with all standard fields
+  
+- **Troubleshooting**: `name, status, message, lastdown, lastcheck, parent.name, device, host`
+  - Focused on debugging and investigation
+  
+- **Custom**: Select your own columns from dropdown or type custom field names
+  - Searchable multi-select with all available PRTG fields
+  - Supports custom column names for API extensions
+
+#### 6. **Data Limits**
+Control result size for optimal performance:
+- **Limit**: Maximum results to return (default: 100, use 0 for unlimited)
+- **Offset**: Number of results to skip (useful for pagination)
+
+### Quick Start Examples
+
+#### Example 1: Monitor All Down Sensors
+```
+Query Name: Down Sensors
+Object Type: Sensors
+Status: Down
+Column Preset: Essential
+Limit: 100
+```
+
+#### Example 2: Network Device Overview
+```
+Query Name: Network Status
+Object Type: Devices
+Status: (leave empty for all)
+Column Preset: Network Device
+Custom Filter: device contains 'switch' OR device contains 'router'
+Limit: 50
+```
+
+#### Example 3: Recent Failures
+```
+Query Name: Recent Failures
+Object Type: Sensors, Devices
+Status: Down, Warning
+Column Preset: Troubleshooting
+Custom Filter: lastdown > '2024-11-01'
+Limit: 100
+```
+
+#### Example 4: Custom Analysis
+```
+Query Name: High Priority Issues
+Object Type: Sensors
+Status: Down
+Column Preset: Custom
+Columns: name, status, priority, message, parent.name, lastdown
+Custom Filter: priority > 3
+Limit: 50
+```
 
 ### Dashboard Integration
 
