@@ -1,12 +1,31 @@
 import React, { ChangeEvent, PureComponent } from 'react';
-import { LegacyForms, InlineField, MultiSelect, Input, Select } from '@grafana/ui';
+import { LegacyForms, InlineField, MultiSelect, Input, Select, Button, Icon } from '@grafana/ui';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { PRTGDataSource } from '../datasource';
-import { PRTGDataSourceOptions, PRTGQuery } from '../types';
+import {
+  PRTGColumnPreset,
+  PRTGDataSourceOptions,
+  PRTGMetadata,
+  PRTGQuery,
+  PRTGQueryViewMode,
+} from '../types';
 
 const { FormField } = LegacyForms;
 
 type Props = QueryEditorProps<PRTGDataSource, PRTGQuery, PRTGDataSourceOptions>;
+
+interface State {
+  metadata: PRTGMetadata | null;
+  metadataLoading: boolean;
+  metadataError?: string;
+}
+
+const DEFAULT_LIMIT = 100;
+
+const VIEW_MODE_OPTIONS: Array<SelectableValue<PRTGQueryViewMode>> = [
+  { label: 'Table (raw objects)', value: 'table' },
+  { label: 'Status Heatmap (group x status)', value: 'heatmap' },
+];
 
 const OBJECT_TYPE_OPTIONS: Array<SelectableValue<string>> = [
   { label: 'Channels', value: 'channel' },
@@ -17,25 +36,26 @@ const OBJECT_TYPE_OPTIONS: Array<SelectableValue<string>> = [
 ];
 
 const STATUS_OPTIONS: Array<SelectableValue<string>> = [
-  { label: 'Up', value: 'up' },
   { label: 'Down', value: 'down' },
   { label: 'Warning', value: 'warning' },
   { label: 'Paused', value: 'paused' },
+  { label: 'Up', value: 'up' },
 ];
 
-const COLUMN_PRESETS: Record<string, string[]> = {
+const COLUMN_PRESETS: Record<PRTGColumnPreset, string[]> = {
   essential: ['name', 'status', 'message'],
   network: ['name', 'status', 'device', 'host', 'lastcheck', 'message'],
   full: ['name', 'status', 'message', 'parent.name', 'device', 'group', 'probe', 'lastup', 'lastdown', 'objid'],
   troubleshooting: ['name', 'status', 'message', 'lastdown', 'lastcheck', 'parent.name', 'device', 'host'],
+  custom: [],
 };
 
-const COLUMN_PRESET_OPTIONS: Array<SelectableValue<string>> = [
+const COLUMN_PRESET_OPTIONS: Array<SelectableValue<PRTGColumnPreset>> = [
   { label: 'Essential (name, status, message)', value: 'essential', description: 'Basic information for quick overview' },
   { label: 'Network Device (includes host & device)', value: 'network', description: 'Network monitoring focused columns' },
-  { label: 'Full Details (all common fields)', value: 'full', description: 'Comprehensive view with all standard fields' },
-  { label: 'Troubleshooting (includes timestamps)', value: 'troubleshooting', description: 'Debug and investigation focused' },
-  { label: 'Custom', value: 'custom', description: 'Manually specify columns' },
+  { label: 'Full Details (all common fields)', value: 'full', description: 'Comprehensive view with standard metadata' },
+  { label: 'Troubleshooting (includes timestamps)', value: 'troubleshooting', description: 'Debug and investigation focused view' },
+  { label: 'Custom', value: 'custom', description: 'Manually select the columns to return' },
 ];
 
 const ALL_AVAILABLE_COLUMNS: Array<SelectableValue<string>> = [
@@ -44,6 +64,7 @@ const ALL_AVAILABLE_COLUMNS: Array<SelectableValue<string>> = [
   { label: 'message', value: 'message' },
   { label: 'parent.name', value: 'parent.name' },
   { label: 'objid', value: 'objid' },
+  { label: 'kind', value: 'kind' },
   { label: 'kind_name', value: 'kind_name' },
   { label: 'device', value: 'device' },
   { label: 'group', value: 'group' },
@@ -62,126 +83,254 @@ const ALL_AVAILABLE_COLUMNS: Array<SelectableValue<string>> = [
   { label: 'parentid', value: 'parentid' },
 ];
 
-export class QueryEditor extends PureComponent<Props> {
-  // Set smart defaults for new queries
-  componentDidMount() {
+const toSelectableValues = (values: string[]): Array<SelectableValue<string>> =>
+  values.map(value => ({ label: value, value }));
+
+export class QueryEditor extends PureComponent<Props, State> {
+  state: State = {
+    metadata: null,
+    metadataLoading: false,
+    metadataError: undefined,
+  };
+
+  componentDidMount(): void {
+    this.applySmartDefaults();
+    void this.loadMetadata();
+  }
+
+  private applySmartDefaults() {
     const { query, onChange } = this.props;
-    
-    // Apply smart defaults only if this is a new/empty query
-    if (!query.limit && query.limit !== 0) {
-      onChange({ ...query, limit: 100 }); // Default limit to 100
+    const next: PRTGQuery = { ...query };
+    let changed = false;
+
+    if (next.limit === undefined) {
+      next.limit = DEFAULT_LIMIT;
+      changed = true;
     }
-    if (!query.columnPreset && !query.columns) {
-      onChange({ ...query, columnPreset: 'essential', columns: COLUMN_PRESETS.essential }); // Default to essential columns
+
+    if (!next.viewMode) {
+      next.viewMode = 'table';
+      changed = true;
+    }
+
+    if (!next.columnPreset && (!next.columns || next.columns.length === 0)) {
+      next.columnPreset = 'essential';
+      next.columns = COLUMN_PRESETS.essential;
+      changed = true;
+    }
+
+    if (changed) {
+      onChange(next);
     }
   }
 
-  onQueryNameChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { onChange, query } = this.props;
-    onChange({ ...query, queryName: event.target.value });
-  };
+  private async loadMetadata(forceRefresh = false) {
+    const { datasource } = this.props;
 
-  onObjectTypesChange = (values: Array<SelectableValue<string>>) => {
-    const { onChange, query, onRunQuery } = this.props;
-    const objectTypes = values.map(v => v.value).filter((v): v is string => v !== undefined);
-    onChange({ ...query, objectTypes: objectTypes.length > 0 ? objectTypes : undefined });
-    onRunQuery(); // Auto-run query when object types change
-  };
+    this.setState({ metadataLoading: true, metadataError: undefined });
 
-  onStatusesChange = (values: Array<SelectableValue<string>>) => {
-    const { onChange, query, onRunQuery } = this.props;
-    const statuses = values.map(v => v.value).filter((v): v is string => v !== undefined);
-    onChange({ ...query, statuses: statuses.length > 0 ? statuses : undefined });
-    onRunQuery(); // Auto-run query when statuses change
-  };
-
-  onColumnPresetChange = (value: SelectableValue<string>) => {
-    const { onChange, query, onRunQuery } = this.props;
-    const preset = value.value;
-    
-    if (preset === 'custom') {
-      // Switch to custom mode - keep existing columns or clear
-      onChange({ ...query, columnPreset: 'custom', columnsInput: query.columns?.join(', ') || '' });
-    } else if (preset && COLUMN_PRESETS[preset]) {
-      // Apply preset columns
-      const columns = COLUMN_PRESETS[preset];
-      onChange({ ...query, columnPreset: preset, columns, columnsInput: undefined });
-      onRunQuery();
+    try {
+      const metadata = await datasource.getMetadata(forceRefresh);
+      this.setState({ metadata, metadataLoading: false });
+    } catch (error) {
+      console.error('Failed to load PRTG metadata', error);
+      const message = error instanceof Error ? error.message : String(error);
+      this.setState({ metadataLoading: false, metadataError: message });
     }
+  }
+
+  private onQueryNameChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { onChange, query } = this.props;
+    onChange({ ...query, queryName: event.target.value || undefined });
   };
 
-  onColumnsMultiSelectChange = (values: Array<SelectableValue<string>>) => {
+  private onObjectTypesChange = (values: Array<SelectableValue<string>>) => {
     const { onChange, query, onRunQuery } = this.props;
-    const columns = values.map(v => v.value).filter((v): v is string => v !== undefined);
-    onChange({ ...query, columns: columns.length > 0 ? columns : undefined, columnPreset: 'custom' });
+    const objectTypes = values.map(v => v.value).filter((v): v is string => !!v);
+    onChange({ ...query, objectTypes: objectTypes.length ? objectTypes : undefined });
     onRunQuery();
   };
 
-  onFilterChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { onChange, query } = this.props;
-    onChange({ ...query, filter: event.target.value });
+  private onStatusesChange = (values: Array<SelectableValue<string>>) => {
+    const { onChange, query, onRunQuery } = this.props;
+    const statuses = values.map(v => v.value).filter((v): v is string => !!v);
+    onChange({ ...query, statuses: statuses.length ? statuses : undefined });
+    onRunQuery();
   };
 
-  onFilterBlur = () => {
+  private onSensorTypesChange = (values: Array<SelectableValue<string>>) => {
+    const { onChange, query, onRunQuery } = this.props;
+    const sensorTypes = values.map(v => v.value).filter((v): v is string => !!v);
+    onChange({ ...query, sensorTypes: sensorTypes.length ? sensorTypes : undefined });
+    onRunQuery();
+  };
+
+  private onGroupsChange = (values: Array<SelectableValue<string>>) => {
+    const { onChange, query, onRunQuery } = this.props;
+    const groups = values.map(v => v.value).filter((v): v is string => !!v);
+    onChange({ ...query, groups: groups.length ? groups : undefined });
+    onRunQuery();
+  };
+
+  private onDevicesChange = (values: Array<SelectableValue<string>>) => {
+    const { onChange, query, onRunQuery } = this.props;
+    const devices = values.map(v => v.value).filter((v): v is string => !!v);
+    onChange({ ...query, devices: devices.length ? devices : undefined });
+    onRunQuery();
+  };
+
+  private onTagsChange = (values: Array<SelectableValue<string>>) => {
+    const { onChange, query, onRunQuery } = this.props;
+    const tags = values.map(v => v.value).filter((v): v is string => !!v);
+    onChange({ ...query, tags: tags.length ? tags : undefined });
+    onRunQuery();
+  };
+
+  private onColumnPresetChange = (value: SelectableValue<PRTGColumnPreset>) => {
+    const { onChange, query, onRunQuery } = this.props;
+    const preset = value?.value ?? 'essential';
+
+    if (preset === 'custom') {
+      onChange({ ...query, columnPreset: 'custom', columns: query.columns ?? [] });
+      return;
+    }
+
+    const columns = COLUMN_PRESETS[preset] ?? COLUMN_PRESETS.essential;
+    onChange({ ...query, columnPreset: preset, columns });
+    onRunQuery();
+  };
+
+  private onColumnsChange = (values: Array<SelectableValue<string>>) => {
+    const { onChange, query, onRunQuery } = this.props;
+    const columns = values.map(v => v.value).filter((v): v is string => !!v);
+    onChange({ ...query, columns, columnPreset: 'custom' });
+    onRunQuery();
+  };
+
+  private onFilterChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { onChange, query } = this.props;
+    onChange({ ...query, filter: event.target.value || undefined });
+  };
+
+  private onFilterBlur = () => {
     const { onRunQuery } = this.props;
-    onRunQuery(); // Run query when user finishes editing filter
+    onRunQuery();
   };
 
-  onLimitChange = (event: ChangeEvent<HTMLInputElement>) => {
+  private onLimitChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onChange, query } = this.props;
-    const limit = parseInt(event.target.value, 10);
-    onChange({ ...query, limit: isNaN(limit) ? undefined : limit });
+    const value = parseInt(event.target.value, 10);
+    onChange({ ...query, limit: Number.isNaN(value) ? undefined : value });
   };
 
-  onOffsetChange = (event: ChangeEvent<HTMLInputElement>) => {
+  private onOffsetChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onChange, query } = this.props;
-    const offset = parseInt(event.target.value, 10);
-    onChange({ ...query, offset: isNaN(offset) ? undefined : offset });
+    const value = parseInt(event.target.value, 10);
+    onChange({ ...query, offset: Number.isNaN(value) ? undefined : value });
+  };
+
+  private onViewModeChange = (value: SelectableValue<PRTGQueryViewMode>) => {
+    const { onChange, query, onRunQuery } = this.props;
+    const viewMode = value?.value ?? 'table';
+    onChange({ ...query, viewMode });
+    onRunQuery();
   };
 
   render() {
-    const query = { ...this.props.query };
-    const { queryName, objectTypes, statuses, filter, limit, offset, columns, columnPreset } = query;
-    
-    // Convert arrays to SelectableValue arrays for MultiSelect
-    const selectedObjectTypes = (objectTypes || [])
+    const { query } = this.props;
+    const { metadata, metadataError, metadataLoading } = this.state;
+
+    const {
+      queryName,
+      viewMode = 'table',
+      objectTypes,
+      statuses,
+      sensorTypes,
+      groups,
+      devices,
+      tags,
+      filter,
+      limit,
+      offset,
+      columns = [],
+      columnPreset = 'essential',
+    } = query;
+
+    const selectedObjectTypes = (objectTypes ?? [])
       .map(type => OBJECT_TYPE_OPTIONS.find(opt => opt.value === type))
-      .filter((opt): opt is SelectableValue<string> => opt !== undefined);
-    
-    const selectedStatuses = (statuses || [])
+      .filter((opt): opt is SelectableValue<string> => !!opt);
+
+    const selectedStatuses = (statuses ?? [])
       .map(status => STATUS_OPTIONS.find(opt => opt.value === status))
-      .filter((opt): opt is SelectableValue<string> => opt !== undefined);
-    
-    const selectedColumnPreset = COLUMN_PRESET_OPTIONS.find(opt => opt.value === (columnPreset || 'essential')) || COLUMN_PRESET_OPTIONS[0];
-    
-    const selectedColumns = (columns || [])
-      .map(col => ALL_AVAILABLE_COLUMNS.find(opt => opt.value === col) || { label: col, value: col })
-      .filter((opt): opt is SelectableValue<string> => opt !== undefined);
-    
-    const isCustomColumns = columnPreset === 'custom';
+      .filter((opt): opt is SelectableValue<string> => !!opt);
+
+    const selectedSensorTypes = (sensorTypes ?? []).map(value => ({ label: value, value }));
+    const selectedGroups = (groups ?? []).map(value => ({ label: value, value }));
+    const selectedDevices = (devices ?? []).map(value => ({ label: value, value }));
+    const selectedTags = (tags ?? []).map(value => ({ label: value, value }));
+
+    const selectedColumnPreset = COLUMN_PRESET_OPTIONS.find(opt => opt.value === columnPreset) ?? COLUMN_PRESET_OPTIONS[0];
+    const selectedColumns = columns.map(col => ALL_AVAILABLE_COLUMNS.find(opt => opt.value === col) || { label: col, value: col });
+
+    const viewModeOption = VIEW_MODE_OPTIONS.find(opt => opt.value === viewMode) ?? VIEW_MODE_OPTIONS[0];
+
+    const groupOptions = toSelectableValues(metadata?.groups ?? []);
+    const deviceOptions = toSelectableValues(metadata?.devices ?? []);
+    const tagOptions = toSelectableValues(metadata?.tags ?? []);
+    const sensorTypeOptions = toSelectableValues(metadata?.sensorTypes ?? []);
+
+    const showColumnControls = viewMode === 'table';
 
     return (
       <div className="gf-form-group">
         <div className="gf-form">
-          <InlineField 
-            label="Query Name" 
+          <InlineField
+            label="Query Name"
             labelWidth={16}
-            tooltip="Optional: Give this query a friendly name to help organize your dashboard"
+            tooltip="Optional: Give this query a friendly name to help organize large dashboards"
             grow
           >
             <Input
               onChange={this.onQueryNameChange}
               value={queryName || ''}
-              placeholder="e.g., Down Sensors, Critical Devices, Network Overview"
+              placeholder="e.g., Down Sensors, Network Overview, Critical Devices"
             />
           </InlineField>
         </div>
 
         <div className="gf-form">
-          <InlineField 
-            label="Object Type" 
+          <InlineField
+            label="View Mode"
             labelWidth={16}
-            tooltip="Select one or more object types. Generates filter like: type = sensor OR type = device"
+            tooltip="Choose how to visualize the data. Table shows raw objects, Status Heatmap aggregates counts by group/status."
+            grow
+          >
+            <Select
+              options={VIEW_MODE_OPTIONS}
+              value={viewModeOption}
+              onChange={this.onViewModeChange}
+              menuPlacement="bottom"
+            />
+          </InlineField>
+        </div>
+
+        {viewMode === 'heatmap' && (
+          <div className="gf-form">
+            <div className="gf-form-label width-16" />
+            <div className="gf-form-label">
+              <small>
+                Heatmap mode groups results by <strong>Group</strong> and <strong>Status</strong>, returning counts per combination.
+                Use the filters below to focus on specific sensor types, groups, devices, or tags.
+              </small>
+            </div>
+          </div>
+        )}
+
+        <div className="gf-form">
+          <InlineField
+            label="Object Type"
+            labelWidth={16}
+            tooltip="Filter by object category in PRTG (sensor, device, group, etc.)"
             grow
           >
             <MultiSelect
@@ -195,10 +344,10 @@ export class QueryEditor extends PureComponent<Props> {
         </div>
 
         <div className="gf-form">
-          <InlineField 
-            label="Status" 
+          <InlineField
+            label="Statuses"
             labelWidth={16}
-            tooltip="Select one or more status values. Generates filter like: status = down OR status = warning"
+            tooltip="Filter by current status. Sorting in tables follows PRTG severity order automatically."
             grow
           >
             <MultiSelect
@@ -212,70 +361,165 @@ export class QueryEditor extends PureComponent<Props> {
         </div>
 
         <div className="gf-form">
-          <InlineField 
-            label="Custom Filter" 
+          <InlineField
+            label="Sensor Types"
             labelWidth={16}
-            tooltip="Additional filters using PRTG API v2 syntax. Appended to Object Type and Status filters. Examples: name contains 'server', lastup > '2024-01-01'"
+            tooltip="Filter by sensor type (kind_name). Populated from live PRTG metadata."
+            grow
+          >
+            <MultiSelect
+              options={sensorTypeOptions}
+              value={selectedSensorTypes}
+              onChange={this.onSensorTypesChange}
+              placeholder="Start typing to filter sensor types..."
+              isLoading={metadataLoading}
+              isClearable
+              allowCustomValue
+            />
+          </InlineField>
+        </div>
+
+        <div className="gf-form">
+          <InlineField
+            label="Groups"
+            labelWidth={16}
+            tooltip="Limit results to specific PRTG groups"
+            grow
+          >
+            <MultiSelect
+              options={groupOptions}
+              value={selectedGroups}
+              onChange={this.onGroupsChange}
+              placeholder="Select groups..."
+              isLoading={metadataLoading}
+              isClearable
+              allowCustomValue
+            />
+          </InlineField>
+        </div>
+
+        <div className="gf-form">
+          <InlineField
+            label="Devices"
+            labelWidth={16}
+            tooltip="Limit results to specific devices"
+            grow
+          >
+            <MultiSelect
+              options={deviceOptions}
+              value={selectedDevices}
+              onChange={this.onDevicesChange}
+              placeholder="Select devices..."
+              isLoading={metadataLoading}
+              isClearable
+              allowCustomValue
+            />
+          </InlineField>
+        </div>
+
+        <div className="gf-form">
+          <InlineField
+            label="Tags"
+            labelWidth={16}
+            tooltip="Filter by tags attached to sensors/devices"
+            grow
+          >
+            <MultiSelect
+              options={tagOptions}
+              value={selectedTags}
+              onChange={this.onTagsChange}
+              placeholder="Select or type tags..."
+              isLoading={metadataLoading}
+              isClearable
+              allowCustomValue
+            />
+          </InlineField>
+        </div>
+
+        {metadataError && (
+          <div className="gf-form">
+            <div className="gf-form-label width-16">
+              <Icon name="exclamation-triangle" size="sm" />
+            </div>
+            <div className="gf-form-label">
+              <small>Metadata refresh failed: {metadataError}. Filters still work with manual values.</small>
+            </div>
+          </div>
+        )}
+
+        <div className="gf-form">
+          <InlineField
+            label="Custom Filter"
+            labelWidth={16}
+            tooltip="Additional raw filter expression appended to the filters above. Uses PRTG API v2 syntax."
             grow
           >
             <Input
               onChange={this.onFilterChange}
               onBlur={this.onFilterBlur}
               value={filter || ''}
-              placeholder="e.g., name contains 'server' AND lastup > '2024-01-01'"
+              placeholder="e.g., name contains 'server' AND lastdown > '2024-11-01'"
             />
           </InlineField>
         </div>
 
-        <div className="gf-form">
-          <InlineField 
-            label="Column Preset" 
-            labelWidth={16}
-            tooltip="Choose a pre-configured set of columns or select Custom to pick your own"
-            grow
-          >
-            <Select
-              options={COLUMN_PRESET_OPTIONS}
-              value={selectedColumnPreset}
-              onChange={this.onColumnPresetChange}
-            />
-          </InlineField>
-        </div>
+        {showColumnControls ? (
+          <>
+            <div className="gf-form">
+              <InlineField
+                label="Column Preset"
+                labelWidth={16}
+                tooltip="Select a preset of commonly used columns or choose Custom to pick specific fields"
+                grow
+              >
+                <Select
+                  options={COLUMN_PRESET_OPTIONS}
+                  value={selectedColumnPreset}
+                  onChange={this.onColumnPresetChange}
+                  menuPlacement="bottom"
+                />
+              </InlineField>
+            </div>
 
-        {isCustomColumns && (
+            {columnPreset === 'custom' ? (
+              <div className="gf-form">
+                <InlineField
+                  label="Columns"
+                  labelWidth={16}
+                  tooltip="Select or type column names. Custom values are sent directly to the PRTG API."
+                  grow
+                >
+                  <MultiSelect
+                    options={ALL_AVAILABLE_COLUMNS}
+                    value={selectedColumns}
+                    onChange={this.onColumnsChange}
+                    placeholder="Select or type column names..."
+                    allowCustomValue
+                    isClearable
+                  />
+                </InlineField>
+              </div>
+            ) : (
+              <div className="gf-form">
+                <InlineField
+                  label="Columns"
+                  labelWidth={16}
+                  tooltip={`Using ${selectedColumnPreset.label}`}
+                  grow
+                >
+                  <Input value={columns.join(', ')} disabled placeholder="Using preset columns" />
+                </InlineField>
+              </div>
+            )}
+          </>
+        ) : (
           <div className="gf-form">
-            <InlineField 
-              label="Columns" 
-              labelWidth={16}
-              tooltip="Select columns to display. Start typing to search or add custom column names"
-              grow
-            >
-              <MultiSelect
-                options={ALL_AVAILABLE_COLUMNS}
-                value={selectedColumns}
-                onChange={this.onColumnsMultiSelectChange}
-                placeholder="Select or type column names..."
-                allowCustomValue
-                isClearable
-              />
-            </InlineField>
-          </div>
-        )}
-
-        {!isCustomColumns && (
-          <div className="gf-form">
-            <InlineField 
-              label="Columns" 
-              labelWidth={16}
-              tooltip={`Using ${selectedColumnPreset.label} preset`}
-              grow
-            >
-              <Input
-                value={(columns || []).join(', ')}
-                disabled
-                placeholder="Using preset columns..."
-              />
-            </InlineField>
+            <div className="gf-form-label width-16" />
+            <div className="gf-form-label">
+              <small>
+                Column selection is managed automatically in heatmap mode. Switch back to table view to pick custom columns.
+              </small>
+            </div>
           </div>
         )}
 
@@ -285,9 +529,9 @@ export class QueryEditor extends PureComponent<Props> {
             labelWidth={16}
             inputWidth={15}
             onChange={this.onLimitChange}
-            value={limit?.toString() || ''}
-            placeholder="100"
-            tooltip="Maximum number of results to return (default: 100, use 0 for no limit)"
+            value={limit?.toString() ?? DEFAULT_LIMIT.toString()}
+            placeholder={`${DEFAULT_LIMIT}`}
+            tooltip="Maximum results to return (0 = unlimited). Default is 100 to protect dashboards."
             type="number"
           />
           <FormField
@@ -295,11 +539,32 @@ export class QueryEditor extends PureComponent<Props> {
             labelWidth={16}
             inputWidth={15}
             onChange={this.onOffsetChange}
-            value={offset?.toString() || ''}
+            value={offset?.toString() ?? '0'}
             placeholder="0"
-            tooltip="Number of results to skip (for pagination)"
+            tooltip="Number of results to skip (useful for pagination)."
             type="number"
           />
+        </div>
+
+        <div className="gf-form">
+          <InlineField labelWidth={16} label={metadata ? 'Metadata' : 'Metadata'} grow>
+            <div className="gf-form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <small>
+                {metadata
+                  ? `Loaded ${metadata.groups.length} groups · ${metadata.devices.length} devices · ${metadata.tags.length} tags`
+                  : 'Metadata loads automatically to populate filters.'}
+              </small>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="sync"
+                onClick={() => this.loadMetadata(true)}
+                disabled={metadataLoading}
+              >
+                Refresh
+              </Button>
+            </div>
+          </InlineField>
         </div>
 
         <div className="gf-form-group">
@@ -307,14 +572,17 @@ export class QueryEditor extends PureComponent<Props> {
             <div className="gf-form-label width-16">Help</div>
             <div className="gf-form-label">
               <small>
-                <strong>Filter Syntax:</strong> Use PRTG API v2 filter query language (
-                <a href="https://www.paessler.com/support/prtg/api/v2/overview/index.html#filter" target="_blank" rel="noopener noreferrer">
-                  Documentation
-                </a>).
+                <strong>Filter syntax:</strong> Use the built-in selectors above or add custom expressions (documentation linked).
                 <br />
-                <strong>Operators:</strong> AND, OR for combining filters. Use = for equals, contains for partial match, &gt; &lt; for comparisons.
+                <strong>Status order:</strong> Sorting on the <em>Status</em> column follows PRTG severity automatically.
                 <br />
-                <strong>Quick Tips:</strong> Use Column Presets for common scenarios, or choose Custom to select specific fields. Default limit is 100 results.
+                <a
+                  href="https://www.paessler.com/support/prtg/api/v2/overview/index.html#filter"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  PRTG API v2 filter reference
+                </a>
               </small>
             </div>
           </div>

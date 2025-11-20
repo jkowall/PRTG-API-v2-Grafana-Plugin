@@ -1,15 +1,23 @@
 import { DataQuery, DataSourceJsonData } from '@grafana/data';
 
+export type PRTGColumnPreset = 'essential' | 'network' | 'full' | 'troubleshooting' | 'custom';
+
+export type PRTGQueryViewMode = 'table' | 'heatmap';
+
 export interface PRTGQuery extends DataQuery {
   queryName?: string; // Optional friendly name for the query
+  viewMode?: PRTGQueryViewMode; // Table (default) or status heatmap aggregation
+  columnPreset?: PRTGColumnPreset; // Column preset selection
   objectTypes?: string[]; // Multi-select: channel, sensor, device, group, probe
+  sensorTypes?: string[]; // Sensor type filter (kind/kind_name)
+  groups?: string[]; // Group filter values
+  devices?: string[]; // Device filter values
+  tags?: string[]; // Tag filter values
   statuses?: string[]; // Multi-select: up, down, warning, paused
   filter?: string; // Custom filter using PRTG API v2 filter syntax
   limit?: number;
   offset?: number;
   columns?: string[];
-  columnsInput?: string; // Raw input string for columns field
-  columnPreset?: string; // Column preset: essential, network, full, troubleshooting, custom
   format?: 'table' | 'timeseries';
 }
 
@@ -21,6 +29,14 @@ export interface PRTGDataSourceOptions extends DataSourceJsonData {
 
 export interface PRTGSecureJsonData {
   apiKey?: string;
+}
+
+export interface PRTGMetadata {
+  groups: string[];
+  devices: string[];
+  tags: string[];
+  sensorTypes: string[];
+  fetchedAt: number;
 }
 
 export interface PRTGObject {

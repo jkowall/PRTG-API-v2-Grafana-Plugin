@@ -1,5 +1,5 @@
 import { getBackendSrv } from '@grafana/runtime';
-import { PRTGObject } from './types';
+import { PRTGMetadata, PRTGObject } from './types';
 
 export interface PRTGApiClientOptions {
   url: string;
@@ -14,6 +14,7 @@ export interface PRTGQueryOptions {
   filter?: string;
   limit?: number;
   offset?: number;
+  columns?: string[];
 }
 
 export interface PRTGApiResponse<T = any> {
@@ -55,7 +56,7 @@ export class PRTGApiClient {
   }
 
   async query(options: PRTGQueryOptions): Promise<PRTGApiResponse<PRTGObject>> {
-    const { endpoint, filter, limit, offset } = options;
+    const { endpoint, filter, limit, offset, columns } = options;
     
     const params: Record<string, string> = {};
     
@@ -67,6 +68,9 @@ export class PRTGApiClient {
     }
     if (offset !== undefined) {
       params.offset = offset.toString();
+    }
+    if (columns && columns.length > 0) {
+      params.columns = columns.join(',');
     }
 
     const url = this.buildUrl(endpoint, params);
@@ -154,5 +158,57 @@ export class PRTGApiClient {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
+  }
+
+  async getMetadata(limit = 1000): Promise<PRTGMetadata> {
+    const response = await this.query({
+      endpoint: 'experimental/objects',
+      limit,
+      columns: ['group', 'device', 'kind_name', 'tags'],
+    });
+
+    const groups = new Set<string>();
+    const devices = new Set<string>();
+    const tags = new Set<string>();
+    const sensorTypes = new Set<string>();
+
+    response.data.forEach(item => {
+      if (item.group) {
+        groups.add(item.group);
+      }
+      if (item.device) {
+        devices.add(item.device);
+      }
+      if (item.kind_name) {
+        sensorTypes.add(item.kind_name);
+      }
+      if (Array.isArray(item.tags)) {
+        item.tags.forEach(tag => {
+          if (tag) {
+            tags.add(tag);
+          }
+        });
+      }
+    });
+
+    const toSortedArray = (set: Set<string>) => Array.from(set.values()).filter(Boolean).sort((a, b) => a.localeCompare(b));
+
+    const metadata: PRTGMetadata = {
+      groups: toSortedArray(groups),
+      devices: toSortedArray(devices),
+      tags: toSortedArray(tags),
+      sensorTypes: toSortedArray(sensorTypes),
+      fetchedAt: Date.now(),
+    };
+
+    console.log('PRTG metadata fetched:', {
+      groups: metadata.groups.length,
+      devices: metadata.devices.length,
+      tags: metadata.tags.length,
+      sensorTypes: metadata.sensorTypes.length,
+      limit,
+    });
+
+    return metadata;
   }
 }

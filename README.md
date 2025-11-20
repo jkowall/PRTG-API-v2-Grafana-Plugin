@@ -12,53 +12,92 @@ This plugin is derived from the original dashboard concept created by [stylersni
 
 - **Native Integration**: Direct connection to PRTG API v2 without external dependencies
 - **Secure Authentication**: Bearer token authentication with encrypted API key storage via Grafana's proxy
-- **Smart Defaults**: New queries start with sensible defaults (100 result limit, essential columns)
+- **Smart Defaults**: New queries start with sensible defaults (100 result limit, essential columns, table view)
 - **Column Presets**: Quick-select common column configurations (Essential, Network Device, Full Details, Troubleshooting)
 - **Column Auto-complete**: Searchable dropdown with all available PRTG fields, plus support for custom column names
+- **Condition Builder**: Multi-select filters for object types, statuses, sensor types, groups, devices, and tags backed by live metadata
+- **Status Heatmap**: Built-in aggregation mode to visualize status counts by group with correct severity ordering
+- **Metadata Sync**: One-click refresh to import the latest groups, devices, tags, and sensor types from PRTG
 - **Query Naming**: Add friendly names to queries for better dashboard organization
-- **Flexible Filtering**: Multi-select for object types and statuses, plus custom filter syntax support
 - **Real-time Data**: Live data from PRTG objects (sensors, devices, groups, probes, channels)
 - **Optimized Queries**: Select specific columns and apply filters for efficient data retrieval
 
 ## Prerequisites
 
-- Grafana 9.0.0 or later
-- PRTG Network Monitor with API v2 enabled
-- PRTG API v2 running on port 1616 (default)
-- Valid PRTG API key with read permissions
+### Quick Installation (Linux / macOS)
 
-## Installation
-
-### From Grafana Plugin Directory (Coming Soon)
 ```bash
-grafana-cli plugins install prtgapiv2-datasource
-```
+# 1. Clone the repository
+git clone https://github.com/jkowall/PRTG-API-v2-Grafana-Plugin.git
+cd PRTG-API-v2-Grafana-Plugin
 
-### Quick Installation with Scripts
-
-**Linux/macOS:**
-```bash
+# 2. Install dependencies and build
+npm install
 npm run build
+
+# 3. Install into Grafana's plugin directory
 ./install-plugin.sh
+
+# 4. Restart Grafana
 sudo systemctl restart grafana-server
 ```
 
-**Windows (PowerShell as Administrator):**
+The install script copies the compiled `dist/` folder to `/var/lib/grafana/plugins/prtgapiv2-datasource` by default. Use `./install-plugin.sh --help` for advanced options.
+
+### Quick Installation (Windows Server 2019+)
+
 ```powershell
+# Run PowerShell as Administrator
+
+# 1. Clone the repository
+git clone https://github.com/jkowall/PRTG-API-v2-Grafana-Plugin.git
+Set-Location PRTG-API-v2-Grafana-Plugin
+
+# 2. Install dependencies and build
+npm install
 npm run build
-.\install-plugin.ps1
+
+# 3. Install into Grafana's plugin directory
+.\\install-plugin.ps1
+
+# 4. Restart Grafana service
 Restart-Service -Name Grafana
 ```
 
-See [WINDOWS-INSTALL.md](WINDOWS-INSTALL.md) for detailed Windows installation guide.
+See [WINDOWS-INSTALL.md](WINDOWS-INSTALL.md) for a detailed Windows walkthrough.
 
-### Manual Installation
-1. Download the latest release from [GitHub Releases](https://github.com/jkowall/PRTG-API-v2-Grafana-Plugin/releases)
-2. Extract to your Grafana plugins directory:
-   - **Linux/macOS:** `/var/lib/grafana/plugins/`
-   - **Windows:** `C:\Program Files\GrafanaLabs\grafana\data\plugins\`
-3. Restart Grafana
-4. Enable the plugin in Grafana Admin > Plugins
+### Manual Copy (Alternative)
+
+If you prefer manual steps:
+
+1. Clone the repository and build (`npm install && npm run build`).
+2. Copy the `dist/` folder to your Grafana plugins directory:
+  - Linux/macOS: `/var/lib/grafana/plugins/prtgapiv2-datasource`
+  - Windows: `C:\Program Files\GrafanaLabs\grafana\data\plugins\prtgapiv2-datasource`
+3. Restart Grafana.
+
+### Allowing or Signing the Plugin
+
+This repository ships as an unsigned plugin. You have two options:
+
+1. **Allow the unsigned plugin (simplest):** add the following setting to `grafana.ini` (or the corresponding environment variable) and restart Grafana:
+
+  ```ini
+  [plugins]
+  allow_loading_unsigned_plugins = prtgapiv2-datasource
+  ```
+
+2. **Self-sign the plugin (recommended for production):**
+  1. Create a Grafana.com account and generate a plugin signature key at [https://grafana.com/profile/org/apikeys](https://grafana.com/profile/org/apikeys) (scope: `plugin:sign`).
+  2. Export the key: `export GRAFANA_ACCESS_TOKEN=YOUR_KEY` (PowerShell: `$env:GRAFANA_ACCESS_TOKEN="YOUR_KEY"`).
+  3. From the project root, run:
+    ```bash
+    npx @grafana/toolkit plugin:sign \
+      --rootUrls http://localhost:3000 \
+      --signatureType private \
+      --id prtgapiv2-datasource
+    ```
+  4. Copy the newly generated signature files inside `dist/` to your Grafana plugins directory and restart Grafana.
 
 ### Development Installation
 ```bash
